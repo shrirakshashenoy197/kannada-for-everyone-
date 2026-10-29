@@ -89,6 +89,7 @@ export function ScanPage() {
     try {
       const tesseract = await import('tesseract.js')
       worker = await tesseract.createWorker('kan', tesseract.OEM.LSTM_ONLY, {
+        langPath: 'https://tessdata.projectnaptha.com/4.0.0',
         logger: (message) => {
           if (message.status === 'recognizing text') {
             setStatus(text('Reading Kannada text…', 'ಕನ್ನಡ ಪಠ್ಯವನ್ನು ಓದಲಾಗುತ್ತಿದೆ…'))
@@ -127,7 +128,7 @@ export function ScanPage() {
             <div><p className="eyebrow">{text('Image input', 'ಚಿತ್ರ ಇನ್‌ಪುಟ್')}</p><h2 id="upload-heading">{text('Choose a Kannada image', 'ಕನ್ನಡ ಚಿತ್ರ ಆಯ್ಕೆಮಾಡಿ')}</h2></div>
             <ImagePlus aria-hidden="true" />
           </div>
-          <p className="muted-text">{text('JPG, PNG, or WebP · Up to 5 MB · Processing stays on this device after the model loads.', 'JPG, PNG ಅಥವಾ WebP · ಗರಿಷ್ಠ 5 MB · ಮಾದರಿ ಲೋಡ್ ಆದ ನಂತರ ಪ್ರಕ್ರಿಯೆ ಈ ಸಾಧನದಲ್ಲೇ ನಡೆಯುತ್ತದೆ.')}</p>
+          <p className="muted-text">{text('JPG, PNG, or WebP · Up to 5 MB · Processing stays on this device. First use downloads about 2 MB of Kannada OCR language data.', 'JPG, PNG ಅಥವಾ WebP · ಗರಿಷ್ಠ 5 MB · ಪ್ರಕ್ರಿಯೆ ಈ ಸಾಧನದಲ್ಲೇ ನಡೆಯುತ್ತದೆ. ಮೊದಲ ಬಳಕೆಯಲ್ಲಿ ಸುಮಾರು 2 MB ಕನ್ನಡ OCR ಭಾಷಾ ಡೇಟಾ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತದೆ.')}</p>
           <label className="form-field" style={{ marginTop: '1rem' }}>
             <span className="form-label">{text('Select or take a photo', 'ಚಿತ್ರ ಆಯ್ಕೆಮಾಡಿ ಅಥವಾ ತೆಗೆದುಕೊಳ್ಳಿ')}</span>
             <input ref={inputRef} className="text-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={handleFileChange} aria-describedby="scan-file-hint" />
