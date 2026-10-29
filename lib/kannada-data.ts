@@ -501,14 +501,14 @@ export const HERITAGE_PLACES: HeritagePlace[] = [
     description: 'A historic temple town whose Chennakeshava Temple is a major example of Hoysala architecture.',
     fact: 'The Chennakeshava Temple was commissioned in the 12th century by Hoysala king Vishnuvardhana.',
     vocabulary: phrase('vocab-temple-ticket', 'ಪ್ರವೇಶ ಶುಲ್ಕ ಎಷ್ಟು?', 'Pravēśa śulka eṣṭu?', 'How much is the entrance fee?', 'Heritage visit'),
-    image: '/images/halebidu.jpg', imageAlt: 'Illustrative Hoysala temple carvings from the Karnataka heritage collection',
+    image: '/images/belur-chennakeshava.png', imageAlt: 'Illustrative view of the Chennakeshava Temple at Belur',
   },
   {
     id: 'badami', name: 'Badami', kannada: 'ಬಾದಾಮಿ', location: 'Bagalkot · Northern Karnataka',
     description: 'A historic town known for rock-cut cave temples and early Chalukya-era architecture.',
     fact: 'The cave temples are carved into red sandstone cliffs overlooking Agastya Lake.',
     vocabulary: phrase('vocab-cave', 'ಗುಹೆಗಳು ಎಲ್ಲಿವೆ?', 'Guhegalu ellive?', 'Where are the caves?', 'Heritage visit'),
-    image: '/images/hampi.jpg', imageAlt: 'Illustrative historic stone architecture from Karnataka',
+    image: '/images/badami-caves.png', imageAlt: 'Illustrative view of the Badami Cave Temples in red sandstone',
   },
 ]
 

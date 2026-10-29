@@ -76,7 +76,7 @@ export function HeritagePage() {
       <PageHeading
         eyebrow={text('A journey through Karnataka', 'ಕರ್ನಾಟಕದ ಪಯಣ')}
         title={text('Heritage at a glance', 'ಒಂದು ನೋಟದಲ್ಲಿ ಪರಂಪರೆ')}
-        description={text('Explore five landmarks through concise historical context and a practical Kannada phrase for each visit. Destination details are factual; some images are illustrative from the linked reference site.', 'ಐದು ತಾಣಗಳನ್ನು ಚಿಕ್ಕ ಐತಿಹಾಸಿಕ ಮಾಹಿತಿ ಮತ್ತು ಪ್ರಾಯೋಗಿಕ ಕನ್ನಡ ನುಡಿಗಟ್ಟಿನೊಂದಿಗೆ ಅನ್ವೇಷಿಸಿ. ತಾಣದ ವಿವರಗಳು ವಾಸ್ತವಾಂಶಗಳಾಗಿವೆ; ಕೆಲವು ಚಿತ್ರಗಳು ಲಿಂಕ್ ಮಾಡಿದ ಉಲ್ಲೇಖ ತಾಣದ ಉದಾಹರಣೆ ಚಿತ್ರಗಳು.')}
+        description={text('Explore five landmarks through concise historical context and a practical Kannada phrase for each visit. Destination details are factual; some images are illustrative.', 'ಐದು ತಾಣಗಳನ್ನು ಚಿಕ್ಕ ಐತಿಹಾಸಿಕ ಮಾಹಿತಿ ಮತ್ತು ಪ್ರಾಯೋಗಿಕ ಕನ್ನಡ ನುಡಿಗಟ್ಟಿನೊಂದಿಗೆ ಅನ್ವೇಷಿಸಿ. ತಾಣಗಳ ವಿವರಗಳು ವಾಸ್ತವಾಂಶಗಳು; ಕೆಲವು ಚಿತ್ರಗಳು ವಿವರಣಾತ್ಮಕವಾಗಿವೆ.')}
       />
 
       <section className="destination-grid" aria-label={text('Karnataka heritage destinations', 'ಕರ್ನಾಟಕದ ಪರಂಪರೆ ತಾಣಗಳು')}>
