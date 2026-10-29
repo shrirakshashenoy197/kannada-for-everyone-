@@ -10,9 +10,89 @@ import { ALL_PHRASES, type Phrase } from '@/lib/kannada-data'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+const TESSDATA_PATH = 'https://tessdata.projectnaptha.com/4.0.0'
+const MIN_IMAGE_DIMENSION = 1600
+const MAX_IMAGE_DIMENSION = 3600
+const MAX_IMAGE_PIXELS = 8_000_000
+const MIN_OCR_CONFIDENCE = 80
 
 function normalizeKannada(value: string) {
   return value.replace(/[\s\p{P}\p{S}]+/gu, '').toLocaleLowerCase()
+}
+
+function findReviewedPhrase(value: string) {
+  const normalized = normalizeKannada(value)
+  if (!normalized) return undefined
+  return ALL_PHRASES.find((phrase) => normalizeKannada(phrase.kannada) === normalized)
+}
+
+function hasSupportedLetters(value: string) {
+  return /[A-Za-z\u0C85-\u0CB9]/u.test(value)
+}
+
+async function prepareOcrCanvas(file: File): Promise<HTMLCanvasElement> {
+  let bitmap: ImageBitmap | null = null
+  let fallbackImage: HTMLImageElement | null = null
+  let fallbackUrl: string | null = null
+
+  try {
+    if (typeof createImageBitmap === 'function') {
+      try {
+        bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+      } catch {
+        bitmap = null
+      }
+    }
+
+    if (!bitmap) {
+      fallbackUrl = URL.createObjectURL(file)
+      fallbackImage = document.createElement('img')
+      fallbackImage.decoding = 'async'
+      fallbackImage.src = fallbackUrl
+      await fallbackImage.decode()
+    }
+
+    const source: CanvasImageSource = bitmap ?? fallbackImage!
+    const width = bitmap?.width ?? fallbackImage!.naturalWidth
+    const height = bitmap?.height ?? fallbackImage!.naturalHeight
+    const longestDimension = Math.max(width, height)
+    if (!width || !height || !longestDimension) throw new Error('The image has no readable dimensions.')
+
+    const maxScale = Math.min(
+      MAX_IMAGE_DIMENSION / longestDimension,
+      Math.sqrt(MAX_IMAGE_PIXELS / (width * height)),
+    )
+    const requestedScale = longestDimension < MIN_IMAGE_DIMENSION ? MIN_IMAGE_DIMENSION / longestDimension : 1
+    const scale = Math.min(maxScale, requestedScale)
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(width * scale))
+    canvas.height = Math.max(1, Math.round(height * scale))
+
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) throw new Error('Canvas image processing is unavailable.')
+
+    context.fillStyle = '#fff'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(source, 0, 0, canvas.width, canvas.height)
+
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height)
+    const pixels = imageData.data
+    for (let index = 0; index < pixels.length; index += 4) {
+      const luminance = pixels[index] * 0.299 + pixels[index + 1] * 0.587 + pixels[index + 2] * 0.114
+      const enhanced = Math.max(0, Math.min(255, Math.round((luminance - 128) * 1.18 + 128)))
+      pixels[index] = enhanced
+      pixels[index + 1] = enhanced
+      pixels[index + 2] = enhanced
+      pixels[index + 3] = 255
+    }
+    context.putImageData(imageData, 0, 0)
+    return canvas
+  } finally {
+    bitmap?.close()
+    if (fallbackUrl) URL.revokeObjectURL(fallbackUrl)
+  }
 }
 
 export function ScanPage() {
@@ -26,6 +106,8 @@ export function ScanPage() {
   const [error, setError] = useState('')
   const [progress, setProgress] = useState(0)
   const [busy, setBusy] = useState(false)
+  const [includeEnglish, setIncludeEnglish] = useState(false)
+  const [reviewConfirmed, setReviewConfirmed] = useState(false)
 
   useEffect(() => {
     return () => {
@@ -33,19 +115,19 @@ export function ScanPage() {
     }
   }, [preview])
 
-  const matchedPhrase = useMemo(() => {
-    const normalized = normalizeKannada(recognizedText)
-    if (!normalized) return undefined
-    return ALL_PHRASES.find((phrase) => normalizeKannada(phrase.kannada) === normalized)
-  }, [recognizedText])
+  const matchedPhrase = useMemo(() => findReviewedPhrase(recognizedText), [recognizedText])
+  const reviewedLineMatches = useMemo(() => recognizedText.split(/\r?\n/u).flatMap((line, index) => {
+    const phrase = findReviewedPhrase(line)
+    return phrase ? [{ key: `${index}-${phrase.id}`, line: line.trim(), phrase }] : []
+  }), [recognizedText])
 
-  const scannedPhrase: Phrase | null = recognizedText.trim() ? {
-    id: `scan-${Date.now()}`,
+  const scannedPhrase: Phrase | null = useMemo(() => recognizedText.trim() ? {
+    id: 'scan-result',
     kannada: recognizedText.trim(),
-    transliteration: matchedPhrase?.transliteration ?? text('Transliteration unavailable', 'ಲಿಪ್ಯಂತರ ಲಭ್ಯವಿಲ್ಲ'),
-    english: matchedPhrase?.english ?? text('No reviewed English translation is available offline.', 'ಪರಿಶೀಲಿತ ಇಂಗ್ಲಿಷ್ ಅನುವಾದ ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿ ಲಭ್ಯವಿಲ್ಲ.'),
+    transliteration: matchedPhrase?.transliteration ?? text('Transliteration unavailable for this OCR text.', 'ಈ OCR ಪಠ್ಯಕ್ಕೆ ಲಿಪ್ಯಂತರ ಲಭ್ಯವಿಲ್ಲ.'),
+    english: matchedPhrase?.english ?? text('No verified translation is available. OCR does not translate text.', 'ಪರಿಶೀಲಿತ ಅನುವಾದ ಲಭ್ಯವಿಲ್ಲ. OCR ಪಠ್ಯವನ್ನು ಅನುವಾದಿಸುವುದಿಲ್ಲ.'),
     category: 'Scanned sign',
-  } : null
+  } : null, [matchedPhrase, recognizedText, text])
 
   function clearImage() {
     setFile(null)
@@ -55,6 +137,7 @@ export function ScanPage() {
     setProgress(0)
     setError('')
     setStatus('')
+    setReviewConfirmed(false)
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -64,7 +147,11 @@ export function ScanPage() {
     setError('')
     setRecognizedText('')
     setConfidence(null)
+    setProgress(0)
     setStatus('')
+    setReviewConfirmed(false)
+    setFile(null)
+    setPreview(null)
     if (!ACCEPTED_TYPES.has(selectedFile.type)) {
       setError(text('Choose a JPG, PNG, or WebP image.', 'JPG, PNG ಅಥವಾ WebP ಚಿತ್ರ ಆಯ್ಕೆಮಾಡಿ.'))
       event.currentTarget.value = ''
@@ -83,30 +170,93 @@ export function ScanPage() {
     if (!file || busy) return
     setBusy(true)
     setError('')
-    setStatus(text('Loading the Kannada OCR model…', 'ಕನ್ನಡ OCR ಮಾದರಿಯನ್ನು ಲೋಡ್ ಮಾಡಲಾಗುತ್ತಿದೆ…'))
+    setRecognizedText('')
+    setConfidence(null)
+    setReviewConfirmed(false)
+    setStatus(text('Preparing the uploaded image…', 'ಅಪ್‌ಲೋಡ್ ಮಾಡಿದ ಚಿತ್ರವನ್ನು ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ…'))
     setProgress(0)
     let worker: Awaited<ReturnType<(typeof import('tesseract.js'))['createWorker']>> | null = null
+
     try {
+      const ocrCanvas = await prepareOcrCanvas(file)
+      setStatus(includeEnglish
+        ? text('Loading Kannada and English OCR data…', 'ಕನ್ನಡ ಮತ್ತು ಇಂಗ್ಲಿಷ್ OCR ಡೇಟಾ ಲೋಡ್ ಮಾಡಲಾಗುತ್ತಿದೆ…')
+        : text('Loading Kannada OCR data…', 'ಕನ್ನಡ OCR ಡೇಟಾ ಲೋಡ್ ಮಾಡಲಾಗುತ್ತಿದೆ…'))
       const tesseract = await import('tesseract.js')
-      worker = await tesseract.createWorker('kan', tesseract.OEM.LSTM_ONLY, {
-        langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+      const languages = includeEnglish ? ['kan', 'eng'] : ['kan']
+      worker = await tesseract.createWorker(languages, tesseract.OEM.LSTM_ONLY, {
+        langPath: TESSDATA_PATH,
+        cacheMethod: 'write',
         logger: (message) => {
-          if (message.status === 'recognizing text') {
-            setStatus(text('Reading Kannada text…', 'ಕನ್ನಡ ಪಠ್ಯವನ್ನು ಓದಲಾಗುತ್ತಿದೆ…'))
-          } else if (message.status) {
-            setStatus(message.status)
+          const currentStatus = message.status.toLowerCase()
+          if (currentStatus === 'recognizing text') {
+            setStatus(includeEnglish
+              ? text('Reading Kannada and English text…', 'ಕನ್ನಡ ಮತ್ತು ಇಂಗ್ಲಿಷ್ ಪಠ್ಯ ಓದಲಾಗುತ್ತಿದೆ…')
+              : text('Reading Kannada text…', 'ಕನ್ನಡ ಪಠ್ಯ ಓದಲಾಗುತ್ತಿದೆ…'))
+          } else if (currentStatus.includes('traineddata') || currentStatus.includes('language')) {
+            setStatus(text('Downloading or loading OCR language data…', 'OCR ಭಾಷಾ ಡೇಟಾ ಡೌನ್‌ಲೋಡ್ ಅಥವಾ ಲೋಡ್ ಆಗುತ್ತಿದೆ…'))
+          } else {
+            setStatus(text('Preparing the OCR engine…', 'OCR ಎಂಜಿನ್ ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ…'))
           }
-          if (Number.isFinite(message.progress)) setProgress(Math.round(message.progress * 100))
+          if (Number.isFinite(message.progress)) {
+            setProgress(Math.max(0, Math.min(100, Math.round(message.progress * 100))))
+          }
         },
       })
-      const result = await worker.recognize(file)
-      const output = result.data.text.trim()
-      setRecognizedText(output)
-      setConfidence(Math.round(result.data.confidence))
+      await worker.setParameters({
+        tessedit_pageseg_mode: tesseract.PSM.AUTO,
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      })
+
+      let result = await worker.recognize(ocrCanvas, { rotateAuto: true })
+      let output = result.data.text.replace(/\r\n?/gu, '\n').trim()
+      let confidenceValue = Number.isFinite(result.data.confidence) ? Math.round(result.data.confidence) : 0
+
+      if (confidenceValue < MIN_OCR_CONFIDENCE) {
+        setStatus(text('Trying a second OCR layout for clearer text…', 'ಹೆಚ್ಚು ಸ್ಪಷ್ಟ ಪಠ್ಯಕ್ಕಾಗಿ ಎರಡನೇ OCR ವಿನ್ಯಾಸ ಪ್ರಯತ್ನಿಸಲಾಗುತ್ತಿದೆ…'))
+        await worker.setParameters({
+          tessedit_pageseg_mode: tesseract.PSM.SINGLE_BLOCK,
+          preserve_interword_spaces: '1',
+          user_defined_dpi: '300',
+        })
+        const alternate = await worker.recognize(file)
+        const alternateText = alternate.data.text.replace(/\r\n?/gu, '\n').trim()
+        const alternateConfidence = Number.isFinite(alternate.data.confidence) ? Math.round(alternate.data.confidence) : 0
+        const primaryMatchesReviewedPhrase = Boolean(findReviewedPhrase(output)) || output.split(/\r?\n/u).some((line) => Boolean(findReviewedPhrase(line)))
+        const alternateMatchesReviewedPhrase = Boolean(findReviewedPhrase(alternateText)) || alternateText.split(/\r?\n/u).some((line) => Boolean(findReviewedPhrase(line)))
+
+        if ((alternateMatchesReviewedPhrase && !primaryMatchesReviewedPhrase) || alternateConfidence > confidenceValue) {
+          result = alternate
+          output = alternateText
+          confidenceValue = alternateConfidence
+        }
+      }
+
+      setConfidence(confidenceValue)
       setProgress(100)
-      setStatus(output ? text('OCR finished. Review the text before using it.', 'OCR ಪೂರ್ಣಗೊಂಡಿದೆ. ಬಳಸುವ ಮೊದಲು ಪಠ್ಯ ಪರಿಶೀಲಿಸಿ.') : text('No readable Kannada text was found. Try a sharper, well-lit image.', 'ಓದಬಹುದಾದ ಕನ್ನಡ ಪಠ್ಯ ಸಿಗಲಿಲ್ಲ. ಸ್ಪಷ್ಟವಾದ, ಚೆನ್ನಾಗಿ ಬೆಳಗಿದ ಚಿತ್ರ ಪ್ರಯತ್ನಿಸಿ.'))
+
+      if (!output || !hasSupportedLetters(output)) {
+        setError(text('No reliable Kannada or English text was detected. Upload a sharper, closer image with good lighting.', 'ವಿಶ್ವಾಸಾರ್ಹ ಕನ್ನಡ ಅಥವಾ ಇಂಗ್ಲಿಷ್ ಪಠ್ಯ ಸಿಗಲಿಲ್ಲ. ಹೆಚ್ಚು ಸ್ಪಷ್ಟವಾದ, ಹತ್ತಿರದ ಮತ್ತು ಚೆನ್ನಾಗಿ ಬೆಳಗಿದ ಚಿತ್ರ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ.'))
+        setStatus('')
+        return
+      }
+
+      const hasReviewedPhraseMatch = Boolean(findReviewedPhrase(output)) || output.split(/\r?\n/u).some((line) => Boolean(findReviewedPhrase(line)))
+      if (confidenceValue < MIN_OCR_CONFIDENCE && !hasReviewedPhraseMatch) {
+        setError(text(`Recognition confidence was only ${confidenceValue}%. The result was hidden. Upload a clearer image and try again.`, `ಗುರುತಿಸುವಿಕೆಯ ವಿಶ್ವಾಸಾರ್ಹತೆ ${confidenceValue}% ಮಾತ್ರ. ಫಲಿತಾಂಶವನ್ನು ಮರೆಮಾಡಲಾಗಿದೆ. ಇನ್ನಷ್ಟು ಸ್ಪಷ್ಟವಾದ ಚಿತ್ರ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.`))
+        setStatus('')
+        return
+      }
+
+      setRecognizedText(output)
+      setStatus(confidenceValue < 65
+        ? text('OCR found text, but confidence is low. Review each line carefully before using it.', 'OCR ಪಠ್ಯ ಕಂಡುಹಿಡಿದಿದೆ, ಆದರೆ ವಿಶ್ವಾಸಾರ್ಹತೆ ಕಡಿಮೆ. ಬಳಸುವ ಮೊದಲು ಪ್ರತಿಯೊಂದು ಸಾಲನ್ನೂ ಎಚ್ಚರಿಕೆಯಿಂದ ಪರಿಶೀಲಿಸಿ.')
+        : text('OCR finished. Review the text before using or saving it.', 'OCR ಪೂರ್ಣಗೊಂಡಿದೆ. ಬಳಸುವ ಅಥವಾ ಉಳಿಸುವ ಮೊದಲು ಪಠ್ಯ ಪರಿಶೀಲಿಸಿ.'))
     } catch {
-      setError(text('Kannada OCR could not start. Check your connection for the first model download, then try again.', 'ಕನ್ನಡ OCR ಆರಂಭವಾಗಲಿಲ್ಲ. ಮೊದಲ ಮಾದರಿ ಡೌನ್‌ಲೋಡ್‌ಗಾಗಿ ಸಂಪರ್ಕ ಪರಿಶೀಲಿಸಿ, ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.'))
+      setError(includeEnglish
+        ? text('OCR could not process this image or load Kannada and English language data. Confirm the file is a valid JPG, PNG, or WebP image and that you are online for the first model download, then try again.', 'ಈ ಚಿತ್ರವನ್ನು OCR ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲು ಅಥವಾ ಕನ್ನಡ ಮತ್ತು ಇಂಗ್ಲಿಷ್ ಭಾಷಾ ಡೇಟಾ ಲೋಡ್ ಮಾಡಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ಫೈಲ್ ಮಾನ್ಯ JPG, PNG ಅಥವಾ WebP ಚಿತ್ರವಾಗಿದೆಯೇ ಮತ್ತು ಮೊದಲ ಮಾದರಿ ಡೌನ್‌ಲೋಡ್‌ಗೆ ಸಂಪರ್ಕವಿದೆಯೇ ಪರಿಶೀಲಿಸಿ, ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.')
+        : text('OCR could not process this image or load Kannada language data. Confirm the file is a valid JPG, PNG, or WebP image and that you are online for the first model download, then try again.', 'ಈ ಚಿತ್ರವನ್ನು OCR ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲು ಅಥವಾ ಕನ್ನಡ ಭಾಷಾ ಡೇಟಾ ಲೋಡ್ ಮಾಡಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ಫೈಲ್ ಮಾನ್ಯ JPG, PNG ಅಥವಾ WebP ಚಿತ್ರವಾಗಿದೆಯೇ ಮತ್ತು ಮೊದಲ ಮಾದರಿ ಡೌನ್‌ಲೋಡ್‌ಗೆ ಸಂಪರ್ಕವಿದೆಯೇ ಪರಿಶೀಲಿಸಿ, ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.'))
       setStatus('')
     } finally {
       if (worker) await worker.terminate().catch(() => undefined)
@@ -118,29 +268,46 @@ export function ScanPage() {
     <div className="page-container">
       <PageHeading
         eyebrow={text('Read the world around you', 'ನಿಮ್ಮ ಸುತ್ತಲಿನ ಪಠ್ಯ ಓದಿ')}
-        title={text('Scan Kannada text', 'ಕನ್ನಡ ಪಠ್ಯ ಸ್ಕ್ಯಾನ್ ಮಾಡಿ')}
-        description={text('Upload a sign or menu image. Kannada OCR runs in your browser using Tesseract; the image is not uploaded. English translation is shown only for an exact match in the reviewed phrase set.', 'ಫಲಕ ಅಥವಾ ಮೆನು ಚಿತ್ರ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ. Tesseract ಬಳಸಿ ಕನ್ನಡ OCR ನಿಮ್ಮ ಬ್ರೌಸರ್‌ನಲ್ಲೇ ನಡೆಯುತ್ತದೆ; ಚಿತ್ರ ಅಪ್‌ಲೋಡ್ ಆಗುವುದಿಲ್ಲ. ಪರಿಶೀಲಿಸಿದ ನುಡಿಗಟ್ಟುಗಳಿಗೆ ನಿಖರ ಹೊಂದಾಣಿಕೆಯಿದ್ದಾಗ ಮಾತ್ರ ಇಂಗ್ಲಿಷ್ ಅನುವಾದ ತೋರಿಸಲಾಗುತ್ತದೆ.')}
+        title={text('Scan Kannada and English text', 'ಕನ್ನಡ ಮತ್ತು ಇಂಗ್ಲಿಷ್ ಪಠ್ಯ ಸ್ಕ್ಯಾನ್ ಮಾಡಿ')}
+        description={text('Upload a sign, menu, or document image. Kannada OCR runs locally by default; enable English for bilingual images. The image is never uploaded. English meaning appears only for exact matches in the reviewed phrase set.', 'ಫಲಕ, ಮೆನು ಅಥವಾ ದಾಖಲೆ ಚಿತ್ರ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ. ಕನ್ನಡ OCR ಸ್ಥಳೀಯವಾಗಿ ನಡೆಯುತ್ತದೆ; ದ್ವಿಭಾಷಾ ಚಿತ್ರಗಳಿಗೆ ಇಂಗ್ಲಿಷ್ ಆಯ್ಕೆ ಸಕ್ರಿಯಗೊಳಿಸಿ. ಚಿತ್ರವನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡುವುದಿಲ್ಲ. ಪರಿಶೀಲಿಸಿದ ನುಡಿಗಟ್ಟುಗಳೊಂದಿಗೆ ನಿಖರ ಹೊಂದಾಣಿಕೆ ಇದ್ದಾಗ ಮಾತ್ರ ಇಂಗ್ಲಿಷ್ ಅರ್ಥ ತೋರಿಸಲಾಗುತ್ತದೆ.')}
       />
 
       <div className="grid-2" style={{ alignItems: 'start' }}>
         <section className="panel" aria-labelledby="upload-heading">
           <div className="section-heading">
-            <div><p className="eyebrow">{text('Image input', 'ಚಿತ್ರ ಇನ್‌ಪುಟ್')}</p><h2 id="upload-heading">{text('Choose a Kannada image', 'ಕನ್ನಡ ಚಿತ್ರ ಆಯ್ಕೆಮಾಡಿ')}</h2></div>
+            <div><p className="eyebrow">{text('Image input', 'ಚಿತ್ರ ಇನ್‌ಪುಟ್')}</p><h2 id="upload-heading">{text('Choose a Kannada or bilingual image', 'ಕನ್ನಡ ಅಥವಾ ದ್ವಿಭಾಷಾ ಚಿತ್ರ ಆಯ್ಕೆಮಾಡಿ')}</h2></div>
             <ImagePlus aria-hidden="true" />
           </div>
-          <p className="muted-text">{text('JPG, PNG, or WebP · Up to 5 MB · Processing stays on this device. First use downloads about 2 MB of Kannada OCR language data.', 'JPG, PNG ಅಥವಾ WebP · ಗರಿಷ್ಠ 5 MB · ಪ್ರಕ್ರಿಯೆ ಈ ಸಾಧನದಲ್ಲೇ ನಡೆಯುತ್ತದೆ. ಮೊದಲ ಬಳಕೆಯಲ್ಲಿ ಸುಮಾರು 2 MB ಕನ್ನಡ OCR ಭಾಷಾ ಡೇಟಾ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತದೆ.')}</p>
+          <p className="muted-text">{text('JPG, PNG, or WebP · Up to 5 MB · Processing stays on this device. Kannada OCR data downloads on first use; English data is only added for bilingual scans and may be cached.', 'JPG, PNG ಅಥವಾ WebP · ಗರಿಷ್ಠ 5 MB · ಪ್ರಕ್ರಿಯೆ ಈ ಸಾಧನದಲ್ಲೇ ನಡೆಯುತ್ತದೆ. ಕನ್ನಡ OCR ಡೇಟಾ ಮೊದಲ ಬಳಕೆಯಲ್ಲಿ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತದೆ; ದ್ವಿಭಾಷಾ ಸ್ಕ್ಯಾನ್‌ಗಳಿಗೆ ಮಾತ್ರ ಇಂಗ್ಲಿಷ್ ಡೇಟಾ ಸೇರಿಸಲಾಗುತ್ತದೆ ಮತ್ತು ಅದು ಕ್ಯಾಶ್ ಆಗಿರಬಹುದು.')}</p>
           <label className="form-field" style={{ marginTop: '1rem' }}>
-            <span className="form-label">{text('Select or take a photo', 'ಚಿತ್ರ ಆಯ್ಕೆಮಾಡಿ ಅಥವಾ ತೆಗೆದುಕೊಳ್ಳಿ')}</span>
-            <input ref={inputRef} className="text-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={handleFileChange} aria-describedby="scan-file-hint" />
+            <span className="form-label">{text('Select or take a text photo', 'ಪಠ್ಯದ ಚಿತ್ರ ಆಯ್ಕೆಮಾಡಿ ಅಥವಾ ತೆಗೆದುಕೊಳ್ಳಿ')}</span>
+            <input ref={inputRef} className="text-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={handleFileChange} aria-describedby="scan-file-hint" disabled={busy} />
           </label>
-          <p className="helper-text" id="scan-file-hint">{text('Use a clear, front-facing image with good lighting for better recognition.', 'ಉತ್ತಮ ಗುರುತಿಸುವಿಕೆಗಾಗಿ ಸ್ಪಷ್ಟ, ನೇರ ಮತ್ತು ಚೆನ್ನಾಗಿ ಬೆಳಗಿದ ಚಿತ್ರ ಬಳಸಿ.')}</p>
+          <p className="helper-text" id="scan-file-hint">{text('Use a clear, upright image with good lighting. The original preview stays unchanged while OCR processes a separate enhanced copy.', 'ಸ್ಪಷ್ಟ, ನೇರ ಮತ್ತು ಚೆನ್ನಾಗಿ ಬೆಳಗಿದ ಚಿತ್ರ ಬಳಸಿ. OCR ಪ್ರಕ್ರಿಯೆಗೊಳಿಸುವಾಗ ಮೂಲ ಪೂರ್ವವೀಕ್ಷಣೆ ಬದಲಾಗುವುದಿಲ್ಲ; ಪ್ರತ್ಯೇಕವಾಗಿ ಸುಧಾರಿಸಿದ ಪ್ರತಿಯನ್ನು ಬಳಸಲಾಗುತ್ತದೆ.')}</p>
+          <label className="helper-text" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.55rem', marginTop: '0.75rem' }}>
+            <input
+              type="checkbox"
+              checked={includeEnglish}
+              disabled={busy}
+              onChange={(event) => {
+                setIncludeEnglish(event.target.checked)
+                setRecognizedText('')
+                setConfidence(null)
+                setReviewConfirmed(false)
+                setStatus('')
+                setError('')
+                setProgress(0)
+              }}
+            />
+            <span>{text('This image also contains English text. Enable bilingual OCR; the English model downloads once and may be cached.', 'ಈ ಚಿತ್ರದಲ್ಲಿ ಇಂಗ್ಲಿಷ್ ಪಠ್ಯವೂ ಇದೆ. ದ್ವಿಭಾಷಾ OCR ಸಕ್ರಿಯಗೊಳಿಸಿ; ಇಂಗ್ಲಿಷ್ ಮಾದರಿ ಒಮ್ಮೆ ಡೌನ್‌ಲೋಡ್ ಆಗಿ ನಂತರ ಕ್ಯಾಶ್ ಆಗಿರಬಹುದು.')}</span>
+          </label>
           {error ? <p className="status-note status-error" role="alert">{error}</p> : null}
           {status ? <p className="status-note" role="status" aria-live="polite">{status}</p> : null}
           {busy ? <div style={{ marginTop: '1rem' }}><ProgressBar label={text('OCR progress', 'OCR ಪ್ರಗತಿ')} value={progress} max={100} /></div> : null}
           <div className="button-row" style={{ marginTop: '1rem' }}>
             <Button type="button" variant="secondary" disabled={!file || busy} onClick={runOcr}>
               {busy ? <LoaderCircle data-icon="inline-start" aria-hidden="true" className="animate-spin" /> : <ScanLine data-icon="inline-start" aria-hidden="true" />}
-              {busy ? text('Reading…', 'ಓದುತ್ತಿದೆ…') : text('Read Kannada text', 'ಕನ್ನಡ ಪಠ್ಯ ಓದಿ')}
+              {busy ? text('Reading…', 'ಓದುತ್ತಿದೆ…') : text('Read image text', 'ಚಿತ್ರದ ಪಠ್ಯ ಓದಿ')}
             </Button>
             {file ? <Button type="button" variant="outline" disabled={busy} onClick={clearImage}><Trash2 data-icon="inline-start" aria-hidden="true" /> {text('Clear image', 'ಚಿತ್ರ ತೆರವುಗೊಳಿಸಿ')}</Button> : null}
           </div>
@@ -165,17 +332,40 @@ export function ScanPage() {
           {scannedPhrase ? (
             <>
               <label className="form-field">
-                <span className="form-label">{text('Review or correct the detected Kannada', 'ಗುರುತಿಸಿದ ಕನ್ನಡ ಪರಿಶೀಲಿಸಿ ಅಥವಾ ಸರಿಪಡಿಸಿ')}</span>
-                <textarea className="textarea-input" lang="kn" value={recognizedText} onChange={(event) => setRecognizedText(event.target.value)} />
+                <span className="form-label">{text('Review or correct the detected text', 'ಗುರುತಿಸಿದ ಪಠ್ಯ ಪರಿಶೀಲಿಸಿ ಅಥವಾ ಸರಿಪಡಿಸಿ')}</span>
+                <textarea className="textarea-input" lang="kn" value={recognizedText} onChange={(event) => {
+                setRecognizedText(event.target.value)
+                setReviewConfirmed(false)
+                setConfidence(null)
+                setStatus(text('Text edited; the original OCR confidence no longer applies.', 'ಪಠ್ಯವನ್ನು ಸಂಪಾದಿಸಲಾಗಿದೆ; ಮೂಲ OCR ವಿಶ್ವಾಸಾರ್ಹತೆ ಇನ್ನು ಅನ್ವಯಿಸುವುದಿಲ್ಲ.'))
+              }} />
               </label>
               {confidence !== null ? <p className="helper-text">{text('OCR confidence (not translation confidence)', 'OCR ನಿಖರತೆ (ಅನುವಾದದ ನಿಖರತೆ ಅಲ್ಲ)')}: {confidence}%</p> : null}
               {matchedPhrase ? (
-                <p className="status-note" style={{ marginTop: '1rem' }}>{text('Exact match in the reviewed phrase set:', 'ಪರಿಶೀಲಿಸಿದ ನುಡಿಗಟ್ಟುಗಳಲ್ಲಿ ನಿಖರ ಹೊಂದಾಣಿಕೆ:')} <strong>{matchedPhrase.english}</strong></p>
+                <p className="status-note" style={{ marginTop: '1rem' }}>{text('Exact full-text match in the reviewed phrase set:', 'ಪರಿಶೀಲಿಸಿದ ನುಡಿಗಟ್ಟುಗಳಲ್ಲಿ ಪೂರ್ಣ ಪಠ್ಯಕ್ಕೆ ನಿಖರ ಹೊಂದಾಣಿಕೆ:')} <strong>{matchedPhrase.english}</strong></p>
+              ) : reviewedLineMatches.length > 0 ? (
+                <div className="status-note" style={{ marginTop: '1rem' }}>
+                  <p>{text('Verified English matches for exact Kannada lines:', 'ನಿಖರ ಕನ್ನಡ ಸಾಲುಗಳಿಗೆ ಪರಿಶೀಲಿಸಿದ ಇಂಗ್ಲಿಷ್ ಅರ್ಥಗಳು:')}</p>
+                  <ul>
+                    {reviewedLineMatches.map((match) => <li key={match.key}><span lang="kn">{match.line}</span> — <strong>{match.phrase.english}</strong></li>)}
+                  </ul>
+                </div>
               ) : (
-                <p className="status-note" style={{ marginTop: '1rem' }}>{text('No exact reviewed phrase match. This page does not invent an English translation.', 'ಪರಿಶೀಲಿಸಿದ ನುಡಿಗಟ್ಟಿನಲ್ಲಿ ನಿಖರ ಹೊಂದಾಣಿಕೆ ಇಲ್ಲ. ಈ ಪುಟ ಇಂಗ್ಲಿಷ್ ಅನುವಾದವನ್ನು ಕಲ್ಪಿಸುವುದಿಲ್ಲ.')}</p>
+                <p className="status-note" style={{ marginTop: '1rem' }}>{text('No exact match in the reviewed phrase set. OCR does not translate text, so no English translation is shown.', 'ಪರಿಶೀಲಿಸಿದ ನುಡಿಗಟ್ಟುಗಳಲ್ಲಿ ನಿಖರ ಹೊಂದಾಣಿಕೆ ಇಲ್ಲ. OCR ಪಠ್ಯವನ್ನು ಅನುವಾದಿಸುವುದಿಲ್ಲ; ಆದ್ದರಿಂದ ಇಂಗ್ಲಿಷ್ ಅನುವಾದ ತೋರಿಸಲಾಗುವುದಿಲ್ಲ.')}</p>
               )}
               <div style={{ marginTop: '1rem' }}>
-                <PhraseCard phrase={scannedPhrase} source="Scanned Kannada sign" />
+                <Button
+                  type="button"
+                  variant={reviewConfirmed ? 'secondary' : 'outline'}
+                  aria-pressed={reviewConfirmed}
+                  disabled={reviewConfirmed}
+                  onClick={() => setReviewConfirmed(true)}
+                >
+                  {reviewConfirmed ? text('Text reviewed', 'ಪಠ್ಯ ಪರಿಶೀಲಿಸಲಾಗಿದೆ') : text('Confirm this text before enabling Save Phrase', 'ಉಳಿಸುವ ಮೊದಲು ಈ ಪಠ್ಯವನ್ನು ದೃಢಪಡಿಸಿ')}
+                </Button>
+                <div style={{ marginTop: '1rem' }}>
+                  <PhraseCard phrase={scannedPhrase} source={reviewConfirmed ? 'Scanned Kannada sign' : undefined} />
+                </div>
               </div>
             </>
           ) : (
