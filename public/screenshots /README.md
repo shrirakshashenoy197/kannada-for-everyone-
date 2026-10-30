@@ -80,6 +80,7 @@ Instead of focusing only on vocabulary and grammar, the platform combines learni
 
 ## 🛠️ Technology Stack
 
+
 Technology| Purpose
 Next.js| Web application framework
 React| User interface development
@@ -89,7 +90,6 @@ Tesseract.js| Optical Character Recognition (OCR)
 Browser Speech APIs| Voice recording and speech recognition
 Vercel| Application deployment
 GitHub| Source code management
-
 ---
 
 ## 📸 Application Screenshots
