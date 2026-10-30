@@ -96,32 +96,23 @@ Instead of focusing only on vocabulary and grammar, the platform combines learni
 
 ## 📸 Application Screenshots
 
-Home Page
+### Home Page
+![Home Page](./public/screenshots/home.png)
 
-"Kannada Everywhere Home" (./public/screenshots/home.png)
+### Learn Page
+![Learn Page](./public/screenshots/learn.png)
 
-Learn Kannada
+### Scan Page
+![Scan Page](./public/screenshots/scan.png)
 
-"Learn Kannada" (./public/screenshots/learn.png)
+### Talk Page
+![Talk Page](./public/screenshots/talk.png)
 
-Kannada Text Scanner
+### Speak Page
+![Speak Page](./public/screenshots/speak.png)
 
-"Kannada OCR Scanner" (./public/screenshots/scan.png)
-
-Interactive Conversations
-
-"Talk Practice" (./public/screenshots/talk.png)
-
-Speaking Practice
-
-"Speak Practice" (./public/screenshots/speak.png)
-
-Learning Progress
-
-"Progress Dashboard" (./public/screenshots/progress.png)
-
----
-
+### Progress Page
+![Progress Page](./public/screenshots/progress.png)
 ## 🚀 Getting Started
 
 Follow these steps to run the project locally.
