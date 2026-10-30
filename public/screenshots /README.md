@@ -189,15 +189,20 @@ Kannada Everywhere aims to:
 
 ---
 
-## 👩‍💻 Project Information
+---
 
-Project Name: Kannada Everywhere
-Problem Statement: 01 – Kannada for Everyone
-Developer: Shriraksha Shenoy
-Institution: Canara Engineering College, Mangaluru
+## 📋 Project Information
+
+| Detail | Information |
+|---|---|
+| Project Name | Kannada Everywhere |
+| Problem Statement | PS 01 – Kannada for Everyone |
+| Developer | Shriraksha Shenoy |
+| Institution | Canara Engineering College |
+| Location | Mangaluru, Karnataka |
 
 ---
 
-ಕನ್ನಡ ಕಲಿಯಿರಿ. ಕನ್ನಡ ಮಾತನಾಡಿರಿ. ಕರ್ನಾಟಕವನ್ನು ಅರಿಯಿರಿ.
+### ಕನ್ನಡ ಕಲಿಯೋಣ, ಕನ್ನಡ ಮಾತನಾಡೋಣ, ಕರ್ನಾಟಕವನ್ನು ಅರಿಯೋಣ!
 
-Kannada Everywhere – Making Kannada learning practical, accessible, and interactive.
+**Kannada Everywhere – Making Kannada learning practical, accessible, and interactive.**
