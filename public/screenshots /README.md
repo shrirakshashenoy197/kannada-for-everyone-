@@ -1,4 +1,4 @@
-ಕನ್ನಡ Everywhere | Kannada Everywhere
+# ಕನ್ನಡ Everywhere | Kannada Everywhere
 
 Learn Kannada. Understand Kannada. Speak Confidently.
 
@@ -8,7 +8,7 @@ Kannada Everywhere is an interactive, bilingual Kannada-learning platform design
 
 ---
 
-📌 Problem Statement
+## 📌 Problem Statement
 
 Problem Statement 01 – Kannada for Everyone
 
@@ -18,13 +18,13 @@ Traditional learning methods may not provide enough opportunities to practise pr
 
 Kannada Everywhere aims to make learning Kannada more accessible, practical, and interactive.
 
-💡 Our Solution
+## 💡 Our Solution
 
 Kannada Everywhere provides a single platform where users can learn Kannada step by step and practise using it in real-world situations.
 
 Instead of focusing only on vocabulary and grammar, the platform combines learning, listening, speaking, reading, and cultural awareness to support practical language use.
 
-✨ Key Features
+## ✨ Key Features
 
 1. Interactive Kannada Learning
 
@@ -78,7 +78,7 @@ Instead of focusing only on vocabulary and grammar, the platform combines learni
 
 ---
 
-🛠️ Technology Stack
+## 🛠️ Technology Stack
 
 Technology| Purpose
 Next.js| Web application framework
@@ -92,7 +92,7 @@ GitHub| Source code management
 
 ---
 
-📸 Application Screenshots
+## 📸 Application Screenshots
 
 Home Page
 
@@ -120,7 +120,7 @@ Learning Progress
 
 ---
 
-🚀 Getting Started
+## 🚀 Getting Started
 
 Follow these steps to run the project locally.
 
@@ -156,7 +156,7 @@ http://localhost:3000
 
 ---
 
-🔐 Privacy and Accessibility
+## 🔐 Privacy and Accessibility
 
 - The platform provides Kannada and English language support.
 - OCR processing is designed to run locally in the browser.
@@ -167,7 +167,7 @@ Browser support and speech recognition availability may vary.
 
 ---
 
-🎯 Project Impact
+## 🎯 Project Impact
 
 Kannada Everywhere aims to:
 
@@ -177,7 +177,7 @@ Kannada Everywhere aims to:
 - Improve confidence in reading and speaking Kannada.
 - Promote awareness of Karnataka's language, heritage, and culture.
 
-🔮 Future Enhancements
+## 🔮 Future Enhancements
 
 - More advanced Kannada speech and pronunciation evaluation.
 - Expanded OCR support for different image qualities and text styles.
@@ -187,7 +187,7 @@ Kannada Everywhere aims to:
 
 ---
 
-👩‍💻 Project Information
+## 👩‍💻 Project Information
 
 Project Name: Kannada Everywhere
 Problem Statement: 01 – Kannada for Everyone
